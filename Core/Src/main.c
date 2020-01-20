@@ -34,6 +34,10 @@
 #if defined(_GUI_INTERFACE)
 #include "gui_api.h"
 #endif
+#include "message_buffer.h"
+#include "stdio.h"
+#include "stdlib.h"
+#include "string.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -54,6 +58,9 @@
 
 /* USER CODE BEGIN PV */
 extern osThreadId screenTaskHandle;
+//extern MessageBufferHandle_t screenMessage;
+//extern const size_t screenMessageSize;
+
 ili9341_device_t *_screen;
 /* USER CODE END PV */
 
@@ -74,14 +81,59 @@ ili9341_device_t *screen(void)
 
 void screenTouchBegin(ili9341_device_t *dev, uint16_t x, uint16_t y)
 {
-  if (NULL != screenTaskHandle)
-    { osSignalSet(screenTaskHandle, SCREEN_SIGNAL_PAINT_TOUCHED); }
+//  size_t sendCount;
+//  size_t messageSize;
+//  char message[screenMessageSize];
+//  char messageText[screenMessageSize - 3];
+//
+//  snprintf(messageText, screenMessageSize - 3, "Touch = %d, %d", x, y);
+//
+//  message[0] = 10; // x
+//  message[1] = 10; // y
+//  message[2] = strlen(messageText);
+//
+//  memcpy(message + 3, messageText, message[2]);
+//  messageSize = message[2] + 3;
+//
+//  BaseType_t contextSwitch = pdFALSE;
+//
+//  sendCount =
+//      xMessageBufferSendFromISR(screenMessage, (void *)message, messageSize, &contextSwitch);
+//
+//  if (sendCount != messageSize)
+//  {
+//      /* The string could not be added to the message buffer because there was
+//      not enough free space in the buffer. */
+//  }
+//  portYIELD_FROM_ISR(contextSwitch);
+//
+//  static uint16_t x_min = 0xFFFF, x_max = 0x0000, y_min = 0xFFFF, y_max = 0x0000;
+//
+//  if (x < x_min) { x_min = x; }
+//  if (x > x_max) { x_max = x; }
+//  if (y < y_min) { y_min = y; }
+//  if (y > y_max) { y_max = y; }
+
+  char text[64];
+  //snprintf(text, 64, "MIN(%d, %d) MAX(%d, %d)", x_min, y_min, x_max, y_max);
+  snprintf(text, 64, "TOUCH(%d, %d)", x, y);
+
+//  ili9341_text_attr_t textAttr = (ili9341_text_attr_t){
+//    .font = &ili9341_font_7x10,
+//    .fg_color = ILI9341_WHITE,
+//    .bg_color = ILI9341_BLUE,
+//    .origin_x = 10,
+//    .origin_y = 10
+//  };
+
+//  ili9341_fill_rect(dev, textAttr.bg_color,
+//      0, textAttr.origin_y, dev->screen_size.width, textAttr.font->height);
+//  ili9341_draw_string(dev, textAttr, text);
 }
 
 void screenTouchEnd(ili9341_device_t *dev, uint16_t x, uint16_t y)
 {
-  if (NULL != screenTaskHandle)
-    { osSignalSet(screenTaskHandle, SCREEN_SIGNAL_PAINT_NOT_TOUCHED); }
+  ;
 }
 
 /* USER CODE END 0 */
@@ -132,14 +184,20 @@ int main(void)
       TFT_RESET_GPIO_Port, TFT_RESET_Pin,
       TFT_CS_GPIO_Port,    TFT_CS_Pin,
       TFT_DC_GPIO_Port,    TFT_DC_Pin,
-      isoPortrait,
+      isoLandscapeFlip,
       TOUCH_CS_GPIO_Port,  TOUCH_CS_Pin,
       TOUCH_IRQ_GPIO_Port, TOUCH_IRQ_Pin,
       itsSupported,
-      itnNormalized,
-      1500, 3276, 31000, 30110);
+      itnNormalized);
 
-  ili9341_fill_screen(_screen, ILI9341_BLUE);
+//  ili9341_calibrate_scalar(_screen, 3763, 3931, 338, 211);
+//  ili9341_calibrate_3point(_screen, 320, 240,
+//       13,    30,
+//      312,   113,
+//      167,   214,
+//     8770,  4320,
+//    18240, 30262,
+//    30648, 17720);
 
   ili9341_set_touch_pressed_begin(_screen, screenTouchBegin);
   ili9341_set_touch_pressed_end(_screen, screenTouchEnd);

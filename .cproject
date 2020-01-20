@@ -4,7 +4,7 @@
 		<cconfiguration id="com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.debug.169199620">
 			<storageModule buildSystemId="org.eclipse.cdt.managedbuilder.core.configurationDataProvider" id="com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.debug.169199620" moduleId="org.eclipse.cdt.core.settings" name="Debug">
 				<macros>
-					<stringMacro name="FW_PATH" type="VALUE_PATH_ANY" value="${FW_PATH_MACOS}"/>
+					<stringMacro name="FW_PATH" type="VALUE_PATH_ANY" value="${FW_PATH_LINUX}"/>
 					<stringMacro name="FW_PATH_LINUX" type="VALUE_PATH_ANY" value="/home/andrew/.lib/stm32/repo/STM32Cube_FW_G4_V1.1.0"/>
 					<stringMacro name="FW_PATH_MACOS" type="VALUE_PATH_ANY" value="/Users/andrew/STM32Cube/Repository/STM32Cube_FW_G4_V1.1.0"/>
 				</macros>
@@ -109,7 +109,7 @@
 		<cconfiguration id="com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.release.230100259">
 			<storageModule buildSystemId="org.eclipse.cdt.managedbuilder.core.configurationDataProvider" id="com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.release.230100259" moduleId="org.eclipse.cdt.core.settings" name="Release">
 				<macros>
-					<stringMacro name="FW_PATH" type="VALUE_PATH_ANY" value="${FW_PATH_MACOS}"/>
+					<stringMacro name="FW_PATH" type="VALUE_PATH_ANY" value="${FW_PATH_LINUX}"/>
 					<stringMacro name="FW_PATH_LINUX" type="VALUE_PATH_ANY" value="/home/andrew/.lib/stm32/repo/STM32Cube_FW_G4_V1.1.0"/>
 					<stringMacro name="FW_PATH_MACOS" type="VALUE_PATH_ANY" value="/Users/andrew/STM32Cube/Repository/STM32Cube_FW_G4_V1.1.0"/>
 				</macros>

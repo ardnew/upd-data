@@ -73,7 +73,10 @@ void MX_ADC1_Init(void)
   {
     Error_Handler();
   }
-
+  /* USER CODE BEGIN ADC1_Init 0 */
+  HAL_ADCEx_Calibration_Start(&hadc1, sConfig.SingleDiff);
+  HAL_ADC_Start(&hadc1);
+  /* USER CODE END ADC1_Init 0 */
 }
 
 void HAL_ADC_MspInit(ADC_HandleTypeDef* adcHandle)

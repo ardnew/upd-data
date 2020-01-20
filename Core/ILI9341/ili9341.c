@@ -17,7 +17,7 @@
 
 // ---------------------------------------------------------- private defines --
 
-#define __ILI9341_TOUCH_NORM_SAMPLES__ 16U
+#define __ILI9341_TOUCH_NORM_SAMPLES__ 8U
 
 // ----------------------------------------------------------- private macros --
 
@@ -54,9 +54,9 @@ static uint8_t ili9341_screen_rotation(
 
 static int32_t interp(int32_t x, int32_t x0, int32_t x1, int32_t y0, int32_t y1);
 static float finterp(float x, float x0, float x1, float y0, float y1);
-ili9341_two_dimension_t ili9341_clip_touch_coordinate(ili9341_device_t *dev,
-    uint16_t x_pos, uint16_t y_pos);
-ili9341_two_dimension_t ili9341_scale_touch_coordinate(ili9341_device_t *dev,
+ili9341_two_dimension_t ili9341_clip_touch_coordinate(ili9341_two_dimension_t coord,
+    ili9341_two_dimension_t min, ili9341_two_dimension_t max);
+ili9341_two_dimension_t ili9341_project_touch_coordinate(ili9341_device_t *dev,
     uint16_t x_pos, uint16_t y_pos);
 
 // ------------------------------------------------------- exported functions --
@@ -75,11 +75,7 @@ ili9341_device_t *ili9341_device_new(
     GPIO_TypeDef *touch_irq_port,    uint16_t touch_irq_pin,
 
     ili9341_touch_support_t   touch_support,
-    ili9341_touch_normalize_t touch_normalize,
-    uint16_t touch_coordinate_min_x,
-    uint16_t touch_coordinate_min_y,
-    uint16_t touch_coordinate_max_x,
-    uint16_t touch_coordinate_max_y)
+    ili9341_touch_normalize_t touch_normalize)
 {
   ili9341_device_t *dev = NULL;
 
@@ -94,9 +90,7 @@ ili9341_device_t *ili9341_device_new(
       // touch interface parameters
       if ( itsSupported != touch_support ||
            ( (NULL != touch_select_port) && IS_GPIO_PIN(touch_select_pin) &&
-             (NULL != touch_irq_port)    && IS_GPIO_PIN(touch_irq_pin)    &&
-             (touch_coordinate_min_x < touch_coordinate_max_x)            &&
-             (touch_coordinate_min_y < touch_coordinate_max_y)            )) {
+             (NULL != touch_irq_port)    && IS_GPIO_PIN(touch_irq_pin)    )) {
 
         if (NULL != (dev = malloc(sizeof(ili9341_device_t)))) {
 
@@ -122,10 +116,9 @@ ili9341_device_t *ili9341_device_new(
             dev->touch_support        = touch_support;
             dev->touch_normalize      = touch_normalize;
             dev->touch_coordinate     = (ili9341_two_dimension_t){ {0U}, {0U} };
-            dev->touch_coordinate_min = (ili9341_two_dimension_t){
-                {touch_coordinate_min_x}, {touch_coordinate_min_y} };
-            dev->touch_coordinate_max = (ili9341_two_dimension_t){
-                {touch_coordinate_max_x}, {touch_coordinate_max_y} };
+            dev->touch_calibration    = itcNONE;
+            dev->touch_scalar         = (ili9341_scalar_calibrator_t){ {{0U}, {0U}}, {{0U}, {0U}} };
+            dev->touch_3point         = (ili9341_3point_calibrator_t){ {{0U}, {0U}}, 0, 0, 0.0F, 0.0F, 0.0F, 0.0F };
 
             dev->touch_pressed        = itpNotPressed;
             dev->touch_pressed_begin  = NULL;
@@ -141,8 +134,9 @@ ili9341_device_t *ili9341_device_new(
             dev->touch_support        = touch_support;
             dev->touch_normalize      = itnNONE;
             dev->touch_coordinate     = (ili9341_two_dimension_t){ {0U}, {0U} };
-            dev->touch_coordinate_min = (ili9341_two_dimension_t){ {0U}, {0U} };
-            dev->touch_coordinate_max = (ili9341_two_dimension_t){ {0U}, {0U} };
+            dev->touch_calibration    = itcNONE;
+            dev->touch_scalar         = (ili9341_scalar_calibrator_t){ {{0U}, {0U}}, {{0U}, {0U}} };
+            dev->touch_3point         = (ili9341_3point_calibrator_t){ {{0U}, {0U}}, 0, 0, 0.0F, 0.0F, 0.0F, 0.0F };
 
             dev->touch_pressed        = itpNONE;
             dev->touch_pressed_begin  = NULL;
@@ -184,7 +178,7 @@ void ili9341_touch_interrupt(ili9341_device_t *dev)
       break;
 
     case itpPressed:
-      if (itpNotPressed == pressed) {
+      if ((itpNONE == pressed) || (itpNotPressed == pressed)) {
         // state change, end of press
         if (NULL != dev->touch_pressed_end) {
           // use the last-known valid touch coordinate, since the current
@@ -252,10 +246,10 @@ ili9341_touch_pressed_t ili9341_touch_coordinate(ili9341_device_t *dev,
       break;
   }
 
-  // touch coordinates returned as 16-bit values
-  static uint8_t y_cmd[] = { 0x93 };
-  static uint8_t x_cmd[] = { 0xD3 };
-  static uint8_t sleep[] = { 0x00 };
+  // XPT2046 8-bit command patterns
+  static uint8_t x_cmd[]  = { 0xD3 };
+  static uint8_t y_cmd[]  = { 0x93 };
+  static uint8_t sleep[]  = { 0x00 };
 
   uint32_t x_avg = 0U;
   uint32_t y_avg = 0U;
@@ -263,22 +257,25 @@ ili9341_touch_pressed_t ili9341_touch_coordinate(ili9341_device_t *dev,
   uint16_t sample = req_samples;
   uint16_t num_samples = 0U;
 
+  // change SPI clock to 2MHz, max rate supported by XPT2046
+  // TODO: based on STM32G4, which is clocked at 170MHz. support other chips.
   MODIFY_REG(dev->spi_hal->Instance->CR1, SPI_CR1_BR, SPI_BAUDRATEPRESCALER_128);
 
   ili9341_spi_touch_select(dev);
 
   while ((itpPressed == ili9341_touch_pressed(dev)) && (sample--)) {
 
-     HAL_SPI_Transmit(dev->spi_hal, (uint8_t*)y_cmd, sizeof(y_cmd), __SPI_MAX_DELAY__);
-     uint8_t y_raw[2];
-     HAL_SPI_TransmitReceive(dev->spi_hal, (uint8_t*)y_cmd, y_raw, sizeof(y_raw), __SPI_MAX_DELAY__);
+    uint8_t x_raw[2];
+    uint8_t y_raw[2];
 
-     HAL_SPI_Transmit(dev->spi_hal, (uint8_t*)x_cmd, sizeof(x_cmd), __SPI_MAX_DELAY__);
-     uint8_t x_raw[2];
-     HAL_SPI_TransmitReceive(dev->spi_hal, (uint8_t*)x_cmd, x_raw, sizeof(x_raw), __SPI_MAX_DELAY__);
+    HAL_SPI_Transmit(dev->spi_hal, (uint8_t*)x_cmd, sizeof(x_cmd), __SPI_MAX_DELAY__);
+    HAL_SPI_TransmitReceive(dev->spi_hal, (uint8_t*)x_cmd, x_raw, sizeof(x_raw), __SPI_MAX_DELAY__);
 
-     x_avg += (((uint16_t)x_raw[0]) << 8) | ((uint16_t)x_raw[1]);
-     y_avg += (((uint16_t)y_raw[0]) << 8) | ((uint16_t)y_raw[1]);
+    HAL_SPI_Transmit(dev->spi_hal, (uint8_t*)y_cmd, sizeof(y_cmd), __SPI_MAX_DELAY__);
+    HAL_SPI_TransmitReceive(dev->spi_hal, (uint8_t*)y_cmd, y_raw, sizeof(y_raw), __SPI_MAX_DELAY__);
+
+    x_avg += __U16_LEND(x_raw) >> 3;
+    y_avg += __U16_LEND(y_raw) >> 3;
 
     ++num_samples;
   }
@@ -286,13 +283,15 @@ ili9341_touch_pressed_t ili9341_touch_coordinate(ili9341_device_t *dev,
 
   ili9341_spi_touch_release(dev);
 
+  // restore SPI clock to maximum for TFT
+  // TODO: based on STM32G4, which is clocked at 170MHz. support other chips.
   MODIFY_REG(dev->spi_hal->Instance->CR1, SPI_CR1_BR, SPI_BAUDRATEPRESCALER_8);
 
   if (num_samples < req_samples)
     { return itpNotPressed; }
 
   ili9341_two_dimension_t coord =
-      ili9341_scale_touch_coordinate(dev, x_avg / req_samples, y_avg / req_samples);
+      ili9341_project_touch_coordinate(dev, x_avg / req_samples, y_avg / req_samples);
 
   *x_pos = coord.x;
   *y_pos = coord.y;
@@ -300,38 +299,89 @@ ili9341_touch_pressed_t ili9341_touch_coordinate(ili9341_device_t *dev,
   return itpPressed;
 }
 
-uint32_t ili9341_alloc_spi_tx_block(ili9341_device_t *dev,
-    uint32_t tx_block_sz, uint8_t **tx_block)
+void ili9341_calibrate_scalar(ili9341_device_t *dev,
+    uint16_t min_x, uint16_t min_y, uint16_t max_x, uint16_t max_y)
 {
-  if (tx_block_sz > __SPI_TX_BLOCK_SZ__)
-    { tx_block_sz = __SPI_TX_BLOCK_SZ__; }
+  if (NULL == dev)
+    { return; }
 
-#if defined(__ILI9341_STATIC_MEM_ALLOC__)
-  *tx_block = __spi_tx_block__;
-#else
-  *tx_block = malloc(tx_block_sz);
-#endif
-
-  return tx_block_sz;
+  dev->touch_calibration = itcScalar;
+  dev->touch_scalar.min = (ili9341_two_dimension_t){ {min_x}, {min_y} };
+  dev->touch_scalar.max = (ili9341_two_dimension_t){ {max_x}, {max_y} };
 }
 
-void ili9341_free_spi_tx_block(ili9341_device_t *dev,
-    uint8_t **tx_block)
+void ili9341_calibrate_3point(ili9341_device_t *dev,
+    uint16_t scale_width, uint16_t scale_height,
+    int32_t screen_a_x, int32_t screen_a_y,
+    int32_t screen_b_x, int32_t screen_b_y,
+    int32_t screen_c_x, int32_t screen_c_y,
+    int32_t touch_a_x,  int32_t touch_a_y,
+    int32_t touch_b_x,  int32_t touch_b_y,
+    int32_t touch_c_x,  int32_t touch_c_y)
 {
-#if defined(__ILI9341_STATIC_MEM_ALLOC__)
-  ; /* nothing */
-#else
-  free(*tx_block);
-#endif
-}
+  if (NULL == dev)
+    { return; }
 
-void ili9341_init_spi_tx_block(ili9341_device_t *dev,
-    uint32_t tx_block_sz, uint8_t **tx_block)
-{
-  if (NULL != *tx_block) {
-    for (size_t i = 0U; i < tx_block_sz; ++i)
-      { (*tx_block)[i] = 0U; }
-  }
+  dev->touch_calibration = itc3Point;
+
+  dev->touch_3point.scale = (ili9341_two_dimension_t){ {scale_width}, {scale_height} };
+
+  int32_t delta =
+      ( (touch_a_x - touch_c_x) * (touch_b_y - touch_c_y) )
+      -
+      ( (touch_b_x - touch_c_x) * (touch_a_y - touch_c_y) );
+
+  dev->touch_3point.alpha_x =
+      (float)
+        ( ( (screen_a_x - screen_c_x) * (touch_b_y - touch_c_y) )
+          -
+          ( (screen_b_x - screen_c_x) * (touch_a_y - touch_c_y) ) )
+      / delta;
+
+  dev->touch_3point.beta_x =
+      (float)
+        ( ( (touch_a_x - touch_c_x) * (screen_b_x - screen_c_x) )
+          -
+          ( (touch_b_x - touch_c_x) * (screen_a_x - screen_c_x) ) )
+      / delta;
+
+  dev->touch_3point.delta_x =
+      (float)(
+        ( ( (int64_t)screen_a_x
+              * ( (touch_b_x * touch_c_y) - (touch_c_x * touch_b_y) ) )
+          -
+          ( (int64_t)screen_b_x
+              * ( (touch_a_x * touch_c_y) - (touch_c_x * touch_a_y) ) )
+          +
+          ( (int64_t)screen_c_x
+              * ( (touch_a_x * touch_b_y) - (touch_b_x * touch_a_y) ) ) )
+      ) / delta + 0.5;
+
+  dev->touch_3point.alpha_y =
+      (float)
+        ( ( (screen_a_y - screen_c_y) * (touch_b_y - touch_c_y) )
+          -
+          ( (screen_b_y - screen_c_y) * (touch_a_y - touch_c_y) ) )
+      / delta;
+
+  dev->touch_3point.beta_y =
+      (float)
+        ( ( (touch_a_x - touch_c_x) * (screen_b_y - screen_c_y) )
+          -
+          ( (touch_b_x - touch_c_x) * (screen_a_y - screen_c_y) ) )
+      / delta;
+
+  dev->touch_3point.delta_y =
+      (float)(
+        ( ( (int64_t)screen_a_y
+              * (touch_b_x * touch_c_y - touch_c_x * touch_b_y) )
+          -
+          ( (int64_t)screen_b_y
+              * (touch_a_x * touch_c_y - touch_c_x * touch_a_y) )
+          +
+          ( (int64_t)screen_c_y
+              * (touch_a_x * touch_b_y - touch_b_x * touch_a_y) ) )
+      ) / delta + 0.5;
 }
 
 void ili9341_spi_tft_select(ili9341_device_t *dev)
@@ -586,60 +636,118 @@ static float finterp(float x, float x0, float x1, float y0, float y1)
   return (x - x0) * (y1 - y0) / (x1 - x0) + y0;
 }
 
-ili9341_two_dimension_t ili9341_clip_touch_coordinate(ili9341_device_t *dev,
-    uint16_t x_pos, uint16_t y_pos)
+ili9341_two_dimension_t ili9341_clip_touch_coordinate(ili9341_two_dimension_t coord,
+    ili9341_two_dimension_t min, ili9341_two_dimension_t max)
 {
-  ili9341_two_dimension_t coord = { .x = x_pos, .y = y_pos };
-
-  if (NULL != dev) {
-
-    if (coord.x < dev->touch_coordinate_min.x)
-      { coord.x = dev->touch_coordinate_min.x; }
-
-    if (coord.x > dev->touch_coordinate_max.x)
-      { coord.x = dev->touch_coordinate_max.x; }
-
-    if (coord.y < dev->touch_coordinate_min.y)
-      { coord.y = dev->touch_coordinate_min.y; }
-
-    if (coord.y > dev->touch_coordinate_max.y)
-      { coord.y = dev->touch_coordinate_max.y; }
-  }
+  if (coord.x < min.x) { coord.x = min.x; }
+  if (coord.x > max.x) { coord.x = max.x; }
+  if (coord.y < min.y) { coord.y = min.y; }
+  if (coord.y > max.y) { coord.y = max.y; }
 
   return coord;
 }
 
-ili9341_two_dimension_t ili9341_scale_touch_coordinate(ili9341_device_t *dev,
+ili9341_two_dimension_t ili9341_project_touch_coordinate(ili9341_device_t *dev,
     uint16_t x_pos, uint16_t y_pos)
 {
-  ili9341_two_dimension_t coord =
-      ili9341_clip_touch_coordinate(dev, x_pos, y_pos);
+  ili9341_two_dimension_t coord = (ili9341_two_dimension_t){ {x_pos}, {y_pos} };
+  ili9341_two_dimension_t rotate;
+  int32_t x_scaled, y_scaled;
 
   if (NULL != dev) {
-    switch (dev->orientation) {
-      default:
-      case isoPortrait:
-      case isoPortraitFlip:
-        coord = (ili9341_two_dimension_t){
-          .x = interp(coord.x,
-              dev->touch_coordinate_min.x, dev->touch_coordinate_max.x,
-              dev->screen_size.width, 0U),
-          .y = interp(coord.y,
-              dev->touch_coordinate_min.y, dev->touch_coordinate_max.y,
-              dev->screen_size.height, 0U)
-        };
+
+    switch (dev->touch_calibration) {
+      case itcScalar:
+
+        switch (dev->orientation % isoCOUNT) {
+          case isoPortrait:
+          case isoPortraitFlip:
+            x_scaled = interp(coord.x,
+                dev->touch_scalar.min.x, dev->touch_scalar.max.x,
+                0U, dev->screen_size.width);
+            y_scaled = interp(coord.y,
+                dev->touch_scalar.min.y, dev->touch_scalar.max.y,
+                0U, dev->screen_size.height);
+            break;
+
+          case isoLandscape:
+            x_scaled = interp(coord.y,
+                dev->touch_scalar.min.y, dev->touch_scalar.max.y,
+                0U, dev->screen_size.width);
+            y_scaled = interp(coord.x,
+                dev->touch_scalar.min.x, dev->touch_scalar.max.x,
+                0U, dev->screen_size.height);
+            break;
+
+          case isoLandscapeFlip:
+            x_scaled = interp(coord.y,
+                dev->touch_scalar.min.y, dev->touch_scalar.max.y,
+                0U, dev->screen_size.width);
+            y_scaled = interp(coord.x,
+                dev->touch_scalar.min.x, dev->touch_scalar.max.x,
+                0U, dev->screen_size.height);
+            break;
+        }
+
+        coord = ili9341_clip_touch_coordinate(
+            (ili9341_two_dimension_t){{x_scaled}, {y_scaled}},
+            (ili9341_two_dimension_t){{0U}, {0U}},
+            (ili9341_two_dimension_t){{dev->screen_size.width}, {dev->screen_size.height}});
+
         break;
 
-      case isoLandscape:
-      case isoLandscapeFlip:
+      case itc3Point:
+
         coord = (ili9341_two_dimension_t){
-          .x = interp(coord.x,
-              dev->touch_coordinate_min.x, dev->touch_coordinate_max.x,
-              dev->screen_size.height, 0U),
-          .y = interp(coord.y,
-              dev->touch_coordinate_min.y, dev->touch_coordinate_max.y,
-              dev->screen_size.width, 0U)
+          .x = __FROUND(uint16_t, dev->touch_3point.alpha_x * coord.x +
+            dev->touch_3point.beta_x * coord.y +
+            dev->touch_3point.delta_x
+          ),
+          .y = __FROUND(uint16_t, dev->touch_3point.alpha_y * coord.x +
+            dev->touch_3point.beta_y * coord.y +
+            dev->touch_3point.delta_y
+          )
         };
+
+        coord = ili9341_clip_touch_coordinate(
+            rotate,
+            (ili9341_two_dimension_t){ {0U}, {0U} },
+            dev->touch_3point.scale);
+
+        switch (dev->orientation % isoCOUNT) {
+
+          case isoPortrait:
+            rotate = (ili9341_two_dimension_t){
+                .x = dev->touch_3point.scale.width - coord.y,
+                .y = coord.x
+            };
+            break;
+
+          case isoLandscape:
+            rotate = (ili9341_two_dimension_t){
+              .x = coord.x,
+              .y = coord.y
+            };
+            break;
+
+          case isoPortraitFlip:
+            rotate = (ili9341_two_dimension_t){
+              .x = coord.y,
+              .y = dev->touch_3point.scale.height - coord.x
+            };
+            break;
+
+          case isoLandscapeFlip:
+            rotate = (ili9341_two_dimension_t){
+              .x = dev->touch_3point.scale.width - coord.x,
+              .y = dev->touch_3point.scale.height - coord.y
+            };
+            break;
+        }
+
+        break;
+
+      default:
         break;
     }
   }

@@ -47,21 +47,37 @@ extern "C" {
 
 // convert value at addr to little-endian (16-bit)
 #define __U16_LEND(addr)                                   \
-    ( ( (((uint16_t)(*(((uint8_t *)(addr)) + 0)))      ) | \
-        (((uint16_t)(*(((uint8_t *)(addr)) + 1))) << 8U) ) )
+    ( ( (((uint16_t)(*(((uint8_t *)(addr)) + 1)))      ) | \
+        (((uint16_t)(*(((uint8_t *)(addr)) + 0))) << 8U) ) )
 
 // convert value at addr to little-endian (32-bit)
 #define __U32_LEND(addr)                                    \
-    ( ( (((uint32_t)(*(((uint8_t *)(addr)) + 0)))       ) | \
-        (((uint32_t)(*(((uint8_t *)(addr)) + 1))) <<  8U) | \
-        (((uint32_t)(*(((uint8_t *)(addr)) + 2))) << 16U) | \
-        (((uint32_t)(*(((uint8_t *)(addr)) + 3))) << 24U) ) )
+    ( ( (((uint32_t)(*(((uint8_t *)(addr)) + 3)))       ) | \
+        (((uint32_t)(*(((uint8_t *)(addr)) + 2))) <<  8U) | \
+        (((uint32_t)(*(((uint8_t *)(addr)) + 1))) << 16U) | \
+        (((uint32_t)(*(((uint8_t *)(addr)) + 0))) << 24U) ) )
 
+#define __SWAP(t, a, b) { t s; s = a; a = b; b = s; }
+
+// resulting integer width given as t, e.g. __FROUND(uint16_t, -1.3)
+#define __FROUND(t, x) ((x) < 0.0F ? -((t)((-(x)) + 0.5F)) : (t)((x) + 0.5F))
 #define __FABS(v) ((v) < 0.0F ? -(v) : (v))
+
+#define ibOK(x)  (0 != !!(x))
+#define ibNOT(x) (0 == !!(x))
 
 // ----------------------------------------------------------- exported types --
 
 typedef struct ili9341_device ili9341_device_t;
+
+typedef enum
+{
+  ibFalse = 0, ibNo  = ibFalse,
+  ibTrue  = 1, ibYes = ibTrue,
+}
+ili9341_bool_t;
+
+typedef ili9341_bool_t ibool_t; // short-hand alias
 
 typedef struct
 {
@@ -119,6 +135,34 @@ ili9341_touch_normalize_t;
 
 typedef enum
 {
+  itcNONE = -1,
+  itcScalar, // = 0
+  itc3Point, // = 1
+  itcCOUNT,
+}
+ili9341_touch_calibration_t;
+
+typedef struct
+{
+  ili9341_two_dimension_t min;
+  ili9341_two_dimension_t max;
+}
+ili9341_scalar_calibrator_t;
+
+typedef struct
+{
+  ili9341_two_dimension_t scale;
+  int32_t delta_x;
+  int32_t delta_y;
+  float   alpha_x;
+  float   beta_x;
+  float   alpha_y;
+  float   beta_y;
+}
+ili9341_3point_calibrator_t;
+
+typedef enum
+{
   issNONE = -1,
   issDisplayTFT,  // = 0
   issTouchScreen, // = 1
@@ -152,8 +196,9 @@ struct ili9341_device
   ili9341_touch_support_t   touch_support;
   ili9341_touch_normalize_t touch_normalize;
   ili9341_two_dimension_t   touch_coordinate;
-  ili9341_two_dimension_t   touch_coordinate_min;
-  ili9341_two_dimension_t   touch_coordinate_max;
+  ili9341_touch_calibration_t touch_calibration;
+  ili9341_scalar_calibrator_t touch_scalar;
+  ili9341_3point_calibrator_t touch_3point;
 
   ili9341_touch_pressed_t  touch_pressed;
   ili9341_touch_callback_t touch_pressed_begin;
@@ -180,18 +225,28 @@ ili9341_device_t *ili9341_device_new(
     GPIO_TypeDef *touch_irq_port,    uint16_t touch_irq_pin,
 
     ili9341_touch_support_t   touch_support,
-    ili9341_touch_normalize_t touch_normalize,
-    uint16_t touch_coordinate_min_x,
-    uint16_t touch_coordinate_min_y,
-    uint16_t touch_coordinate_max_x,
-    uint16_t touch_coordinate_max_y);
+    ili9341_touch_normalize_t touch_normalize);
 
-uint32_t ili9341_alloc_spi_tx_block(ili9341_device_t *dev,
-    uint32_t tx_block_sz, uint8_t **tx_block);
-void ili9341_free_spi_tx_block(ili9341_device_t *dev,
-    uint8_t **tx_block);
-void ili9341_init_spi_tx_block(ili9341_device_t *dev,
-    uint32_t tx_block_sz, uint8_t **tx_block);
+void ili9341_touch_interrupt(ili9341_device_t *dev);
+ili9341_touch_pressed_t ili9341_touch_pressed(ili9341_device_t *dev);
+
+void ili9341_set_touch_pressed_begin(ili9341_device_t *dev,
+    ili9341_touch_callback_t callback);
+void ili9341_set_touch_pressed_end(ili9341_device_t *dev,
+    ili9341_touch_callback_t callback);
+
+ili9341_touch_pressed_t ili9341_touch_coordinate(ili9341_device_t *dev,
+    uint16_t *x_pos, uint16_t *y_pos);
+void ili9341_calibrate_scalar(ili9341_device_t *dev,
+    uint16_t min_x, uint16_t min_y, uint16_t max_x, uint16_t max_y);
+void ili9341_calibrate_3point(ili9341_device_t *dev,
+    uint16_t scale_width, uint16_t scale_height,
+    int32_t screen_a_x, int32_t screen_a_y,
+    int32_t screen_b_x, int32_t screen_b_y,
+    int32_t screen_c_x, int32_t screen_c_y,
+    int32_t touch_a_x,  int32_t touch_a_y,
+    int32_t touch_b_x,  int32_t touch_b_y,
+    int32_t touch_c_x,  int32_t touch_c_y);
 
 void ili9341_spi_tft_select(ili9341_device_t *dev);
 void ili9341_spi_tft_release(ili9341_device_t *dev);
@@ -211,17 +266,6 @@ void ili9341_spi_write_data_read(ili9341_device_t *dev,
     uint16_t data_sz, uint8_t tx_data[], uint8_t rx_data[]);
 void ili9341_spi_write_command_data(ili9341_device_t *dev,
     ili9341_spi_slave_t spi_slave, uint8_t command, uint16_t data_sz, uint8_t data[]);
-
-void ili9341_touch_interrupt(ili9341_device_t *dev);
-ili9341_touch_pressed_t ili9341_touch_pressed(ili9341_device_t *dev);
-
-void ili9341_set_touch_pressed_begin(ili9341_device_t *dev,
-    ili9341_touch_callback_t callback);
-void ili9341_set_touch_pressed_end(ili9341_device_t *dev,
-    ili9341_touch_callback_t callback);
-
-ili9341_touch_pressed_t ili9341_touch_coordinate(ili9341_device_t *dev,
-    uint16_t *x_pos, uint16_t *y_pos);
 
 #ifdef __cplusplus
 }

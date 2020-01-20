@@ -45,6 +45,7 @@ extern "C" {
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "ili9341.h"
+#include "ili9341_font.h"
 #include "ili9341_gfx.h"
 /* USER CODE END Includes */
 
@@ -53,8 +54,8 @@ extern "C" {
 
 typedef enum
 {
-  false = 0U, FALSE = false, no  = false, NO  = false,
-  true  = 1U, TRUE  = true,  yes = true,  YES = true,
+  false = 0, FALSE = false, no  = false, NO  = false,
+  true  = 1, TRUE  = true,  yes = true,  YES = true,
 }
 bool_t;
 
@@ -127,9 +128,6 @@ ili9341_device_t *screen(void);
 /* USER CODE BEGIN Private defines */
 #define VSENSE_ADC_Instance ADC1
 /* USER CODE END Private defines */
-
-#define SCREEN_SIGNAL_PAINT_TOUCHED      (1 << 0U)
-#define SCREEN_SIGNAL_PAINT_NOT_TOUCHED  (1 << 1U)
 
 #ifdef __cplusplus
 }
