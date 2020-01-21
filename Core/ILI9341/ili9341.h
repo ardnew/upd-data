@@ -42,16 +42,16 @@ extern "C" {
 
 // ------------------------------------------------------------------- macros --
 
-#define __U16_MSBYTE(u) (uint8_t)(((uint16_t)(u) >> 8U) & 0xFF)
-#define __U16_LSBYTE(u) (uint8_t)(((uint16_t)(u)      ) & 0xFF)
+#define __MSBYTEu16(u) (uint8_t)(((uint16_t)(u) >> 8U) & 0xFF)
+#define __LSBYTEu16(u) (uint8_t)(((uint16_t)(u)      ) & 0xFF)
 
 // convert value at addr to little-endian (16-bit)
-#define __U16_LEND(addr)                                   \
+#define __LEu16(addr)                                      \
     ( ( (((uint16_t)(*(((uint8_t *)(addr)) + 1)))      ) | \
         (((uint16_t)(*(((uint8_t *)(addr)) + 0))) << 8U) ) )
 
 // convert value at addr to little-endian (32-bit)
-#define __U32_LEND(addr)                                    \
+#define __LEu32(addr)                                       \
     ( ( (((uint32_t)(*(((uint8_t *)(addr)) + 3)))       ) | \
         (((uint32_t)(*(((uint8_t *)(addr)) + 2))) <<  8U) | \
         (((uint32_t)(*(((uint8_t *)(addr)) + 1))) << 16U) | \

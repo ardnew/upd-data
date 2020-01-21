@@ -270,7 +270,7 @@
 	<variableList>
 		<variable>
 			<name>FW_LOC</name>
-			<value>file:/home/andrew/.lib/stm32/repo/STM32Cube_FW_G4_V1.1.0</value>
+			<value>file:/Users/andrew/STM32Cube/Repository/STM32Cube_FW_G4_V1.1.0</value>
 		</variable>
 	</variableList>
 </projectDescription>

@@ -273,8 +273,8 @@ ili9341_touch_pressed_t ili9341_touch_coordinate(ili9341_device_t *dev,
     HAL_SPI_Transmit(dev->spi_hal, (uint8_t*)y_cmd, sizeof(y_cmd), __SPI_MAX_DELAY__);
     HAL_SPI_TransmitReceive(dev->spi_hal, (uint8_t*)y_cmd, y_raw, sizeof(y_raw), __SPI_MAX_DELAY__);
 
-    x_avg += __U16_LEND(x_raw) >> 3;
-    y_avg += __U16_LEND(y_raw) >> 3;
+    x_avg += __LEu16(x_raw) >> 3;
+    y_avg += __LEu16(y_raw) >> 3;
 
     ++num_samples;
   }
