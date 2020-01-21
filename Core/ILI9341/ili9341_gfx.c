@@ -47,7 +47,7 @@ ili9341_color_t const ILI9341_PINK         = (ili9341_color_t)0xF81F;
 
 // ------------------------------------------------------- private variables --
 
-/* nothing */
+static uint16_t spi_tx_block[__SPI_TX_BLOCK_MAX__];
 
 // ------------------------------------------------------ function prototypes --
 
@@ -55,6 +55,9 @@ static void ili9341_spi_tft_set_address_rect(ili9341_device_t *dev,
     uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1);
 static ili9341_bool_t ili9341_clip_rect(ili9341_device_t *dev,
     uint16_t *x, uint16_t *y, uint16_t *w, uint16_t *h);
+static void ili9341_fill_quarter_circle(ili9341_device_t *dev,
+    ili9341_color_t color,
+    uint16_t x, uint16_t y, uint16_t r, uint8_t corners, int16_t delta);
 
 // ------------------------------------------------------- exported functions --
 
@@ -163,42 +166,83 @@ void ili9341_fill_rect(ili9341_device_t *dev, ili9341_color_t color,
   if (ibNOT(ili9341_clip_rect(dev, &x, &y, &w, &h)))
     { return; }
 
-  // 16-bit color, so need 2 bytes for each pixel being filled
   uint32_t num_pixels = w * h;
-  uint32_t rect_sz    = 2 * num_pixels;
+  uint32_t rect_wc    = num_pixels;
 
-  // allocate largest block required to define rect
-  uint32_t block_sz = rect_sz;
-  if (block_sz > __SPI_TX_BLOCK_SZ__)
-    { block_sz = __SPI_TX_BLOCK_SZ__; }
-  uint8_t *block = malloc(block_sz);
+  uint32_t block_wc = rect_wc;
+  if (block_wc > __SPI_TX_BLOCK_MAX__)
+    { block_wc = __SPI_TX_BLOCK_MAX__; }
 
   // fill entire block with ordered color data
-  uint8_t msb = __U16_MSBYTE(color);
-  uint8_t lsb = __U16_LSBYTE(color);
-  for (uint16_t i = 0; i < block_sz; i += 2) {
-    block[i + 0] = msb;
-    block[i + 1] = lsb;
-  }
+  uint16_t color_le = __U16_LEND(&color);
+  for (uint16_t i = 0; i < block_wc; ++i)
+    { spi_tx_block[i] = color_le; }
 
   // select target region
   ili9341_spi_tft_set_address_rect(dev, x, y, (x + w - 1), (y + h - 1));
   ili9341_spi_tft_select(dev);
 
-  // repeatedly send MIN(remaining-size, block-size) bytes of color data until
-  // all rect bytes have been sent.
   HAL_GPIO_WritePin(dev->data_command_port, dev->data_command_pin, __GPIO_PIN_SET__);
-  uint32_t curr_sz;
-  while (rect_sz > 0) {
-    curr_sz = rect_sz;
-    if (curr_sz > block_sz)
-      { curr_sz = block_sz; }
-    HAL_SPI_Transmit(dev->spi_hal, block, curr_sz, __SPI_MAX_DELAY__);
-    rect_sz -= curr_sz;
+
+  // repeatedly send MIN(remaining-words, block-words) words of color data until
+  // all rect words have been sent.
+  uint32_t curr_wc;
+  while (rect_wc > 0) {
+    curr_wc = rect_wc;
+    if (curr_wc > block_wc)
+      { curr_wc = block_wc; }
+    HAL_SPI_Transmit_DMA(dev->spi_hal, (uint8_t *)spi_tx_block, curr_wc * 2/*16-bit words*/);
+    while (HAL_DMA_STATE_BUSY == HAL_DMA_GetState(dev->spi_hal->hdmatx))
+      { continue; }
+    rect_wc -= curr_wc;
   }
 
-  free(block);
   ili9341_spi_tft_release(dev);
+}
+
+void ili9341_draw_circle(ili9341_device_t *dev, ili9341_color_t color,
+    uint16_t x, uint16_t y, uint16_t r)
+{
+  int16_t f = 1 - r;
+  int16_t fx = 1;
+  int16_t fy = -2 * r;
+  int16_t ix = 0;
+  int16_t iy = r;
+
+  ili9341_draw_pixel(dev, color, x, y + r);
+  ili9341_draw_pixel(dev, color, x, y - r);
+  ili9341_draw_pixel(dev, color, x + r, y);
+  ili9341_draw_pixel(dev, color, x - r, y);
+
+  while (ix < iy) {
+
+    if (f >= 0) {
+      iy--;
+      fy += 2;
+      f += fy;
+    }
+
+    ix++;
+    fx += 2;
+    f += fx;
+
+    ili9341_draw_pixel(dev, color, x + ix, y + iy);
+    ili9341_draw_pixel(dev, color, x - ix, y + iy);
+    ili9341_draw_pixel(dev, color, x + ix, y - iy);
+    ili9341_draw_pixel(dev, color, x - ix, y - iy);
+    ili9341_draw_pixel(dev, color, x + iy, y + ix);
+    ili9341_draw_pixel(dev, color, x - iy, y + ix);
+    ili9341_draw_pixel(dev, color, x + iy, y - ix);
+    ili9341_draw_pixel(dev, color, x - iy, y - ix);
+  }
+}
+
+void ili9341_fill_circle(ili9341_device_t *dev, ili9341_color_t color,
+    uint16_t x, uint16_t y, uint16_t r)
+{
+
+  ili9341_draw_line(dev, color, x, y - r, x, (y - r) + (2 * r) + 1);
+  ili9341_fill_quarter_circle(dev, color, x, y, r, 3, 0);
 }
 
 void ili9341_fill_screen(ili9341_device_t *dev, ili9341_color_t color)
@@ -219,37 +263,24 @@ void ili9341_draw_char(ili9341_device_t *dev, ili9341_text_attr_t attr, char ch)
 
   // 16-bit color, so need 2 bytes for each pixel being filled
   uint32_t num_pixels = attr.font->width * attr.font->height;
-  uint32_t rect_sz    = 2 * num_pixels;
+  uint32_t rect_wc    = num_pixels;
 
-  uint8_t fg_msb = __U16_MSBYTE(attr.fg_color);
-  uint8_t fg_lsb = __U16_LSBYTE(attr.fg_color);
-  uint8_t bg_msb = __U16_MSBYTE(attr.bg_color);
-  uint8_t bg_lsb = __U16_LSBYTE(attr.bg_color);
-  uint8_t msb, lsb;
+  uint16_t fg_le = __U16_LEND(&(attr.fg_color));
+  uint16_t bg_le = __U16_LEND(&(attr.bg_color));
 
-  // allocate largest block required to define rect
-  uint32_t block_sz = rect_sz;
-  if (block_sz > __SPI_TX_BLOCK_SZ__)
-    { block_sz = __SPI_TX_BLOCK_SZ__; }
-  uint8_t *block = malloc(block_sz);
-
-  ili9341_fill_rect(dev,
-      attr.bg_color, attr.origin_x, attr.origin_y, attr.font->width, attr.font->height);
+  uint32_t block_wc = rect_wc;
+  if (block_wc > __SPI_TX_BLOCK_MAX__)
+    { block_wc = __SPI_TX_BLOCK_MAX__; }
 
   // initialize the buffer with glyph from selected font
   uint8_t ch_index = glyph_index(ch);
   for (uint32_t yi = 0; yi < attr.font->height; ++yi) {
     uint32_t gl = (uint32_t)attr.font->glyph[ch_index * attr.font->height + yi];
     for (uint32_t xi = 0; xi < attr.font->width; ++xi) {
-      if ((gl << xi) & 0x8000) {
-        msb = fg_msb;
-        lsb = fg_lsb;
-      } else {
-        msb = bg_msb;
-        lsb = bg_lsb;
-      }
-      block[2 * (yi * attr.font->width + xi) + 0] = msb;
-      block[2 * (yi * attr.font->width + xi) + 1] = lsb;
+      if ((gl << xi) & 0x8000)
+        { spi_tx_block[yi * attr.font->width + xi] = fg_le; }
+      else
+        { spi_tx_block[yi * attr.font->width + xi] = bg_le; }
     }
   }
 
@@ -257,14 +288,23 @@ void ili9341_draw_char(ili9341_device_t *dev, ili9341_text_attr_t attr, char ch)
   ili9341_spi_tft_set_address_rect(dev,
       attr.origin_x, attr.origin_y,
       attr.origin_x + attr.font->width - 1, attr.origin_y + attr.font->height - 1);
-
   ili9341_spi_tft_select(dev);
 
-  // transmit the character data in a single block transfer
   HAL_GPIO_WritePin(dev->data_command_port, dev->data_command_pin, __GPIO_PIN_SET__);
-  HAL_SPI_Transmit(dev->spi_hal, block, block_sz, __SPI_MAX_DELAY__);
 
-  free(block);
+  // repeatedly send MIN(remaining-words, block-words) words of color data until
+  // all rect words have been sent.
+  uint32_t curr_wc;
+  while (rect_wc > 0) {
+    curr_wc = rect_wc;
+    if (curr_wc > block_wc)
+      { curr_wc = block_wc; }
+    HAL_SPI_Transmit_DMA(dev->spi_hal, (uint8_t *)spi_tx_block, curr_wc * 2/*16-bit words*/);
+    while (HAL_DMA_STATE_BUSY == HAL_DMA_GetState(dev->spi_hal->hdmatx))
+      { continue; }
+    rect_wc -= curr_wc;
+  }
+
   ili9341_spi_tft_release(dev);
 }
 
@@ -340,3 +380,64 @@ static ili9341_bool_t ili9341_clip_rect(ili9341_device_t *dev,
 
   return ibTrue;
 }
+
+static void ili9341_fill_quarter_circle(ili9341_device_t *dev,
+    ili9341_color_t color,
+    uint16_t x, uint16_t y, uint16_t r, uint8_t corners, int16_t delta)
+{
+  int16_t f = 1 - r;
+  int16_t fx = 1;
+  int16_t fy = -2 * r;
+  int16_t ix = 0;
+  int16_t iy = r;
+  int16_t px = ix;
+  int16_t py = iy;
+  int16_t tx;
+  int16_t ty;
+
+  delta += 1;
+
+  while (ix < iy) {
+
+    if (f >= 0) {
+      iy--;
+      fy += 2;
+      f += fy;
+    }
+
+    ix++;
+    fx += 2;
+    f += fx;
+
+
+    if (ix < (iy + 1)) {
+      if (corners & 1) {
+        tx = x + ix;
+        ty = y - iy;
+        ili9341_draw_line(dev, color, tx, ty, tx, ty + 2 * iy + delta);
+      }
+      if (corners & 2) {
+        tx = x - ix;
+        ty = y - iy;
+        ili9341_draw_line(dev, color, tx, ty, tx, ty + 2 * iy + delta);
+      }
+    }
+
+    if (iy != py) {
+      if (corners & 1) {
+        tx = x + py;
+        ty = y - px;
+        ili9341_draw_line(dev, color, tx, ty, tx, ty + 2 * px + delta);
+      }
+      if (corners & 2) {
+        tx = x - py;
+        ty = y - px;
+        ili9341_draw_line(dev, color, tx, ty, tx, ty + 2 * px + delta);
+      }
+      py = iy;
+    }
+
+    px = ix;
+  }
+}
+

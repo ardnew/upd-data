@@ -144,7 +144,6 @@ ili9341_device_t *ili9341_device_new(
           }
 
           ili9341_initialize(dev);
-          ili9341_fill_screen(dev, ILI9341_BLACK);
         }
       }
     }

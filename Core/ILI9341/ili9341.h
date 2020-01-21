@@ -28,11 +28,11 @@ extern "C" {
 
 // ------------------------------------------------------------------ defines --
 
-#define __GPIO_PIN_CLR__    GPIO_PIN_RESET
-#define __GPIO_PIN_SET__    GPIO_PIN_SET
+#define __GPIO_PIN_CLR__     GPIO_PIN_RESET
+#define __GPIO_PIN_SET__     GPIO_PIN_SET
 
-#define __SPI_MAX_DELAY__   HAL_MAX_DELAY
-#define __SPI_TX_BLOCK_SZ__ (1U * 1024U) // 1 KiB -MAX- for HAL SPI transmit
+#define __SPI_MAX_DELAY__    HAL_MAX_DELAY
+#define __SPI_TX_BLOCK_MAX__ (1U * 1024U) // 1024 16-bit words (2 KiB)
 
 // whether memory should be allocated as-needed for the SPI block transfers, or
 // if they should share a common pool allocated at compile-time. static

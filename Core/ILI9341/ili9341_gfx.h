@@ -87,6 +87,12 @@ void ili9341_draw_rect(ili9341_device_t *dev, ili9341_color_t color,
     uint16_t x, uint16_t y, uint16_t w, uint16_t h);
 void ili9341_fill_rect(ili9341_device_t *dev, ili9341_color_t color,
     uint16_t x, uint16_t y, uint16_t w, uint16_t h);
+
+void ili9341_draw_circle(ili9341_device_t *dev, ili9341_color_t color,
+    uint16_t x, uint16_t y, uint16_t r);
+void ili9341_fill_circle(ili9341_device_t *dev, ili9341_color_t color,
+    uint16_t x, uint16_t y, uint16_t r);
+
 void ili9341_fill_screen(ili9341_device_t *dev, ili9341_color_t color);
 
 void ili9341_draw_char(ili9341_device_t *dev, ili9341_text_attr_t attr, char ch);

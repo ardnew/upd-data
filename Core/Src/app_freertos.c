@@ -56,9 +56,6 @@ osSemaphoreId screenLockHandle;
 /* USER CODE END Variables */
 osThreadId defaultTaskHandle;
 
-//MessageBufferHandle_t screenMessage;
-//const size_t screenMessageSize = 128;
-
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
 void ScreenTask(void const * argument);
@@ -110,7 +107,7 @@ void MX_FREERTOS_Init(void) {
 /* USER CODE BEGIN Header_StartDefaultTask */
 /**
   * @brief  Function implementing the defaultTask thread.
-  * @param  argument: Not used 
+  * @param  argument: Not used
   * @retval None
   */
 /* USER CODE END Header_StartDefaultTask */
@@ -160,6 +157,31 @@ void ScreenTask(void const * argument)
           } else {
             ili9341_draw_rect(dev, ILI9341_WHITE, i+2, j+2, 12, 12);
           }
+        }
+      }
+
+//      ili9341_text_attr_t textAttr = (ili9341_text_attr_t){
+//        .font = &ili9341_font_11x18,
+//        .fg_color = ILI9341_WHITE,
+//        .bg_color = ILI9341_RED,
+//        .origin_x = 10,
+//        .origin_y = 10
+//      };
+//      ili9341_draw_string(dev, textAttr, "Hello world!");
+
+      ili9341_fill_screen(dev, ILI9341_BLACK);
+
+      uint16_t x_mid = dev->screen_size.width / 2;
+      uint16_t y_mid = dev->screen_size.height / 2;
+      uint16_t radius = x_mid;
+      if (radius < y_mid)
+        { radius = y_mid; }
+
+      for (int16_t i = radius, in = 0; i >= 0; i -= 16, ++in) {
+        if (in & 1) {
+          ili9341_draw_circle(dev, ILI9341_YELLOW, x_mid, y_mid, i);
+        } else {
+          ili9341_fill_circle(dev, ILI9341_ORANGE, x_mid, y_mid, i);
         }
       }
 
