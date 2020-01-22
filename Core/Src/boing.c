@@ -21,15 +21,15 @@ ili9341_color_t const BOING_COLOR_BG_COLOR    = (ili9341_color_t)0xAD75;
 ili9341_color_t const BOING_COLOR_BG_SHADOW   = (ili9341_color_t)0x5285;
 ili9341_color_t const BOING_COLOR_GRID_COLOR  = (ili9341_color_t)0xA815;
 ili9341_color_t const BOING_COLOR_GRID_SHADOW = (ili9341_color_t)0x600C;
-ili9341_color_t const BOING_COLOR_BALL_P1     = (ili9341_color_t)0xF800;
-ili9341_color_t const BOING_COLOR_BALL_P2     = (ili9341_color_t)0xFFFF;
+ili9341_color_t const BOING_COLOR_BALL_P1     = (ili9341_color_t)0x000F;
+ili9341_color_t const BOING_COLOR_BALL_P2     = (ili9341_color_t)0x07FF;
 
 boing_pointf_t const BOING_EDGE_MIN = (boing_pointf_t){
     .x = 15.0F,
     .y = 0.0F
 };
 boing_pointf_t const BOING_EDGE_MAX = (boing_pointf_t){
-    .x = __BOING_PLOT_WIDTH__ - __BOING_BALL_WIDTH__,
+    .x = __BOING_PLOT_WIDTH__ - __BOING_BALL_WIDTH__ - 1,
     .y = 123.0F
 };
 
@@ -50,10 +50,10 @@ void boing_init(boing_ball_t *ball)
   _boing_frame = 0U;
 
   if (NULL != ball) {
-    ball->pos   = (boing_pointf_t){ .x = 20.0F, .y = BOING_EDGE_MAX.y   };
-    ball->pre   = (boing_pointf_t){ .x = 20.0F, .y = BOING_EDGE_MAX.y   };
-    ball->vel   = (boing_pointf_t){ .x =  0.8F, .y = BOING_BOUNCE_VEL_Y };
-    ball->frame = 3.0F;
+    ball->pos   =   (boing_pointf_t){ .x = 20.0F, .y = BOING_EDGE_MAX.y   };
+    ball->pre   =   (boing_pointf_t){ .x = 20.0F, .y = BOING_EDGE_MAX.y   };
+    ball->vel   = (boing_velocity_t){ .x =  1.0F, .y = BOING_BOUNCE_VEL_Y };
+    ball->frame = 3;
     memset(ball->color, 0, sizeof(ball->color));
     memset(ball->spi_tx, 0, sizeof(ball->spi_tx));
   }
@@ -84,33 +84,40 @@ void boing(ili9341_device_t *dev, boing_ball_t *ball)
   // determine screen area to update.  this is the bounds of the ball's prior
   // and current positions, so the old ball is fully erased and new ball is
   // fully drawn.
-  static boing_pointf_t _dim = (boing_pointf_t){
-    .x = __BOING_BALL_WIDTH__ - 1,
-    .y = __BOING_BALL_HEIGHT__ - 1
+  static boing_point_t _dim = (boing_point_t){
+    .x = __BOING_BALL_WIDTH__,
+    .y = __BOING_BALL_HEIGHT__
   };
-  boing_pointf_t min;
-  boing_pointf_t max;
-  boing_pointf_t size;
+  int16_t _pos_x = __FROUND(int16_t, ball->pos.x + _dim.x);
+  int16_t _pos_y = __FROUND(int16_t, ball->pos.y + _dim.y);
+  int16_t _pre_x = __FROUND(int16_t, ball->pre.x + _dim.x);
+  int16_t _pre_y = __FROUND(int16_t, ball->pre.y + _dim.y);
+
+  boing_point_t min;
+  boing_point_t max;
+  boing_point_t size;
 
   // determine bounds of prior and new positions
-  min = ball->pos;
-  if (ball->pre.x < min.x)
-    { min.x = ball->pre.x; }
-  if (ball->pre.y < min.y)
-    { min.y = ball->pre.y; }
+  min.x = __FROUND(int16_t, ball->pos.x);
+  min.y = __FROUND(int16_t, ball->pos.y);
+  if (min.x > ball->pre.x)
+    { min.x = __FROUND(int16_t, ball->pre.x); }
+  if (min.y > ball->pre.y)
+    { min.y = __FROUND(int16_t, ball->pre.y); }
 
-  max.x = ball->pos.x + _dim.x;
-  max.y = ball->pos.y + _dim.y;
-  if ((ball->pre.x + _dim.x) > max.x)
-    { max.x = ball->pre.x + _dim.x; }
-  if ((ball->pre.y + _dim.y) > max.y)
-    { max.y = ball->pre.y + _dim.y; }
+  max.x = _pos_x;
+  max.y = _pos_y;
+  if (max.x < _pre_x)
+    { max.x = _pre_x; }
+  if (max.y < _pre_y)
+    { max.y = _pre_y; }
 
   size.x = max.x - min.x + 1;
   size.y = max.y - min.y + 1;
 
   // ball animation frame is incremented opposite the ball's X velocity
-  ball->frame -= ball->vel.x * BOING_ROTATION_FX;
+  float _frame = ball->vel.x * BOING_ROTATION_FX;
+  ball->frame -= __FROUND(int16_t, _frame);
   if (ball->frame < 0)
     { ball->frame += __BOING_BALL_FRAME_NB__; } // constrain from 0 to 13
   else if (ball->frame >= __BOING_BALL_FRAME_NB__)
@@ -119,158 +126,102 @@ void boing(ili9341_device_t *dev, boing_ball_t *ball)
   // set 7 panels to color 1, 7 to color 2, based on frame number. this makes
   // the ball spin. entries 0(=clear) and 1(=shadow) are skipped.
   for (uint16_t i = 0; i < __BOING_BALL_FRAME_NB__; ++i) {
-    uint16_t fi = (uint16_t)(ball->frame) + i;
+    uint16_t fi = ball->frame + i;
     if ((fi % __BOING_BALL_FRAME_NB__) < __BOING_BALL_FRAME_HF__)
       { ball->color[i + 2] = BOING_COLOR_BALL_P1; }
     else
       { ball->color[i + 2] = BOING_COLOR_BALL_P2; }
   }
 
-#if 0
-#define BGCOLOR    0xAD75
-#define GRIDCOLOR  0xA815
-#define BGSHADOW   0x5285
-#define GRIDSHADOW 0x600C
-#define RED        0xF800
-#define WHITE      0xFFFF
-  // Only the changed rectangle is drawn into the 'renderbuf' array...
-  uint16_t c, *destPtr;
-  int16_t  bx  = min.x - (int)ball->pos.x, // X relative to ball bitmap (can be negative)
-           by  = min.y - (int)ball->pos.y, // Y relative to ball bitmap (can be negative)
-           bgx = min.x,              // X relative to background bitmap (>= 0)
-           bgy = min.y,              // Y relative to background bitmap (>= 0)
-           x, y, bx1, bgx1;         // Loop counters and working vars
-  uint8_t  p;                       // 'packed' value of 2 ball pixels
-  int8_t bufIdx = 0;
-
-  // wait for previous DMA transfer to complete if any
-  ili9341_transmit_wait(dev);
-
-  // select target region
-  ili9341_spi_tft_set_address_rect(dev,
-      (uint16_t)min.x,
-      (uint16_t)min.y,
-      (uint16_t)min.x + size.x - 1.0F,
-      (uint16_t)min.y + size.y - 1.0F
-  );
-  ili9341_spi_tft_select(dev);
-
-  HAL_GPIO_WritePin(dev->data_command_port, dev->data_command_pin, __GPIO_PIN_SET__);
-
-  for(y=0; y<size.y; y++) { // For each row...
-    destPtr = ball->spi_tx[bufIdx];
-    bx1  = bx;  // Need to keep the original bx and bgx values,
-    bgx1 = bgx; // so copies of them are made here (and changed in loop below)
-    for(x=0; x<size.x; x++) {
-      if((bx1 >= 0) && (bx1 < __BOING_BALL_WIDTH__) &&  // Is current pixel row/column
-         (by  >= 0) && (by  < __BOING_BALL_HEIGHT__)) { // inside the ball bitmap area?
-        // Yes, do ball compositing math...
-        p = BOING_BALL[by][bx1 / 2];                // Get packed value (2 pixels)
-        c = (bx1 & 1) ? (p & 0xF) : (p >> 4); // Unpack high or low nybble
-        if(c == 0) { // Outside ball - just draw grid
-          c = BOING_PLOT[bgy][bgx1 / 8] & (0x80 >> (bgx1 & 7)) ? GRIDCOLOR : BGCOLOR;
-        } else if(c > 1) { // In ball area...
-          c = ball->color[c];
-        } else { // In shadow area...
-          c = BOING_PLOT[bgy][bgx1 / 8] & (0x80 >> (bgx1 & 7)) ? GRIDSHADOW : BGSHADOW;
-        }
-      } else { // Outside ball bitmap, just draw background bitmap...
-        c = BOING_PLOT[bgy][bgx1 / 8] & (0x80 >> (bgx1 & 7)) ? GRIDCOLOR : BGCOLOR;
-      }
-      *destPtr++ = c; // Store pixel color
-      bx1++;  // Increment bitmap position counters (X axis)
-      bgx1++;
-    }
-    // wait for previous DMA transfer to complete
-    ili9341_transmit_wait(dev);
-    ili9341_transmit_color(dev, size.x, (ball->spi_tx[bufIdx]), ibNo);
-    bufIdx = 1 - bufIdx;
-    by++; // Increment bitmap position counters (Y axis)
-    bgy++;
-  }
-
-#else
   // only the changed rectangle is written to the rendering buffer
   uint16_t *push;
   uint16_t le, _le;
-  int16_t bx = (int16_t)(min.x - ball->pos.x);
-  int16_t by = (int16_t)(min.y - ball->pos.y);
-  int16_t gx = (int16_t)(min.x);
-  int16_t gy = (int16_t)(min.y);
-  int16_t bi = 0;
-  int16_t _bx, _gx;
+  int16_t bi = 0, bx, gx;
+
+  boing_point_t b = (boing_point_t){
+    .x = min.x - __FROUND(int16_t, ball->pos.x),
+    .y = min.y - __FROUND(int16_t, ball->pos.y)
+  };
+  boing_point_t g = (boing_point_t){
+    .x = min.x,
+    .y = min.y
+  };
 
   // wait for previous DMA transfer to complete if any
   ili9341_transmit_wait(dev);
 
   // select target region
   ili9341_spi_tft_set_address_rect(dev,
-      (uint16_t)min.x,
-      (uint16_t)min.y,
-      (uint16_t)min.x + size.x - 1.0F,
-      (uint16_t)min.y + size.y - 1.0F
-  );
+      min.x, min.y, min.x + size.x - 1, min.y + size.y - 1);
   ili9341_spi_tft_select(dev);
 
   HAL_GPIO_WritePin(dev->data_command_port, dev->data_command_pin, __GPIO_PIN_SET__);
-
 
   for (int16_t y = 0; y < size.y; ++y) {
 
     push = ball->spi_tx[bi];
 
-    _bx = bx; // copies of actual values are used and mutated below
-    _gx = gx; //
+    bx = b.x; // copies of actual values are used and mutated below
+    gx = g.x; //
 
     for (int16_t x = 0; x < size.x; ++x) {
 
-      _le = BOING_PLOT[gy][_gx / 8] & (0x80 >> (_gx & 0x7));
+      _le = BOING_PLOT[g.y][gx / 8] & (0x80 >> (gx & 0x7));
 
       // is current pixel inside the ball bitmap region?
-      if ( ( _bx >= 0 ) && ( _bx < __BOING_BALL_WIDTH__  ) &&
-           (  by >= 0 ) && (  by < __BOING_BALL_HEIGHT__ ) ) {
+      if ( ( bx  >= 0 ) && ( bx  < __BOING_BALL_WIDTH__  ) &&
+           ( b.y >= 0 ) && ( b.y < __BOING_BALL_HEIGHT__ ) ) {
 
-        le = BOING_BALL[by][_bx / 2]; // use low 4 bits by default
-        if (ibNOT(_bx & 1))
+        le = BOING_BALL[b.y][bx / 2]; // use low 4 bits by default
+        if (ibNOT(bx & 1))
           { le >>= 4U; } // shift in high 4 bits
         le &= 0xF; // mask off any leading bits
 
         switch (le) {
-          // outside of ball, outside of shadow
-          case  0: le = _le ? BOING_COLOR_GRID_COLOR  : BOING_COLOR_BG_COLOR;  break;
-          // outside of ball, inside of shadow
-          case  1: le = _le ? BOING_COLOR_GRID_SHADOW : BOING_COLOR_BG_SHADOW; break;
-          // inside of ball
-          default: le = ball->color[le];                 break;
+
+          case  0: // outside of ball, outside of shadow
+            le = _le
+              ? BOING_COLOR_PLOT_SHADOW
+              : BOING_COLOR_PLOT_COLOR;
+            break;
+
+          case  1: // outside of ball, inside of shadow
+            le = _le
+              ? BOING_COLOR_GRID_SHADOW
+              : BOING_COLOR_BG_SHADOW;
+            break;
+
+          default: // inside of ball
+            le = ball->color[le];
+            break;
         }
 
       }
       // outside ball bitmap. just draw background bitmap
       else {
-        le = _le ? BOING_COLOR_GRID_COLOR : BOING_COLOR_BG_COLOR;
+        le = _le
+          ? BOING_COLOR_PLOT_SHADOW
+          : BOING_COLOR_PLOT_COLOR;
       }
 
       *push = __LEu16(&le);
 
       ++push;
-      ++_bx;
-      ++_gx;
-
+      ++bx;
+      ++gx;
     }
 
     // wait for previous DMA transfer to complete
     ili9341_transmit_wait(dev);
-    ili9341_transmit_color(dev, size.x, (ball->spi_tx[bi]), ibNo);
-
+    ili9341_transmit_color(dev, size.x * 2, (ball->spi_tx[bi]), ibNo);
     bi = 1 - bi;
-    ++by;
-    ++gy;
 
+    ++(b.y);
+    ++(g.y);
   }
 
   ili9341_spi_tft_release(dev);
   ili9341_transmit_wait(dev);
-#endif
 }
 
 // -----------------------------------------------------------------------------

@@ -132,6 +132,8 @@ void StartDefaultTask(void const * argument)
 /* USER CODE BEGIN Application */
 void ScreenTask(void const * argument)
 {
+  static uint8_t suite = 0;
+
   for (;;)
   {
     if (NULL != screenLockHandle)
@@ -140,19 +142,25 @@ void ScreenTask(void const * argument)
       {
         ili9341_device_t *dev = screen();
 
-#if defined(TEST_BOING)
-        testBoing(dev);
-#else
-        testScreenFill(dev);
-        testScreenLines(dev);
-        osDelay(1000);
-        testScreenRects(dev);
-        osDelay(1000);
-        testScreenCircles(dev);
-        osDelay(1000);
-        //testScreenText(dev);
-        //osDelay(1000);
-#endif
+        switch (suite) {
+          case 0:
+            testScreenFill(dev);
+            testScreenLines(dev);
+            osDelay(2000);
+            testScreenRects(dev);
+            osDelay(2000);
+            testScreenCircles(dev);
+            osDelay(2000);
+            //testScreenText(dev);
+            //osDelay(1000);
+            ++suite;
+            break;
+
+          case 1:
+            testBoing(dev);
+            break;
+        }
+
         osSemaphoreRelease(screenLockHandle);
       }
     }
@@ -182,6 +190,8 @@ void testScreenLines(ili9341_device_t *dev)
   for (int32_t i = dev->screen_size.width; i >= 0; i -= 10)
     { color = ili9341_color_wheel(&wheel); wheel += 3;
       ili9341_draw_line(dev, color, 0, 0, i, dev->screen_size.height); }
+
+  osDelay(500);
 
   for (int32_t i = 0; i < dev->screen_size.height; i += 10)
     { color = ili9341_color_wheel(&wheel); wheel += 3;
@@ -228,6 +238,8 @@ void testScreenCircles(ili9341_device_t *dev)
     wheel += 9;
     ili9341_fill_circle(dev, color, x_mid, y_mid, i);
   }
+
+  osDelay(500);
 
   for (int16_t i = 0, n = 0; i < dev->screen_size.width; i += 24, ++n) {
     for (int16_t j = 0, m = 0; j < dev->screen_size.height; j += 24, ++m) {

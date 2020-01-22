@@ -38,22 +38,29 @@ typedef struct
 }
 boing_pointf_t;
 
-//typedef struct
-//{
-//  int32_t x;
-//  int32_t y;
-//}
-//boing_point_t;
+typedef struct
+{
+  int16_t x;
+  int16_t y;
+}
+boing_point_t;
+
+typedef struct
+{
+  float x;
+  float y;
+}
+boing_velocity_t;
 
 typedef struct
 {
   boing_pointf_t pos;
   boing_pointf_t pre;
-  boing_pointf_t vel;
-  float frame;
+  boing_velocity_t vel;
+  int16_t frame;
 
   ili9341_color_t color[__BOING_BALL_PANEL_NB__];
-  uint16_t spi_tx[2][__BOING_PLOT_WIDTH__];
+  uint16_t spi_tx[2][__BOING_BALL_WIDTH__ * 2];
 }
 boing_ball_t;
 

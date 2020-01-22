@@ -99,7 +99,7 @@ int main(void)
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-        HAL_Init();
+ HAL_Init();
 
   /* USER CODE BEGIN Init */
 
@@ -128,7 +128,7 @@ int main(void)
       TFT_RESET_GPIO_Port, TFT_RESET_Pin,
       TFT_CS_GPIO_Port,    TFT_CS_Pin,
       TFT_DC_GPIO_Port,    TFT_DC_Pin,
-      isoLandscapeFlip,
+      isoLandscape,
       TOUCH_CS_GPIO_Port,  TOUCH_CS_Pin,
       TOUCH_IRQ_GPIO_Port, TOUCH_IRQ_Pin,
       itsSupported,
