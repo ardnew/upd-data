@@ -39,9 +39,7 @@
 
 // -------------------------------------------------------- private variables --
 
-#if defined(__ILI9341_STATIC_MEM_ALLOC__)
-static uint8_t __spi_tx_block__[__SPI_TX_BLOCK_SZ__]; // do not use, theoretically broken
-#endif
+/* nothing */
 
 // ---------------------------------------------- private function prototypes --
 

@@ -26,10 +26,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "message_buffer.h"
-#include "stdio.h"
-#include "stdlib.h"
-#include "string.h"
+#include "boing.h"
+#include "ili9341.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -39,7 +37,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define TEST_BOING
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -49,7 +47,6 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
-
 osThreadId screenTaskHandle;
 osSemaphoreId screenLockHandle;
 
@@ -64,6 +61,10 @@ void testScreenLines(ili9341_device_t *dev);
 void testScreenRects(ili9341_device_t *dev);
 void testScreenCircles(ili9341_device_t *dev);
 void testScreenText(ili9341_device_t *dev);
+#if defined(TEST_BOING)
+void testBoing(ili9341_device_t *dev);
+static ili9341_bool_t _boingInitialized;
+#endif
 /* USER CODE END FunctionPrototypes */
 
 void StartDefaultTask(void const * argument);
@@ -77,7 +78,6 @@ void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
   */
 void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN Init */
-//  screenMessage = xMessageBufferCreate(screenMessageSize);
   /* USER CODE END Init */
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -103,6 +103,7 @@ void MX_FREERTOS_Init(void) {
   defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */
+  _boingInitialized = ibFalse;
   osThreadDef(screenTask, ScreenTask, osPriorityNormal, 0, configMINIMAL_STACK_SIZE);
   screenTaskHandle = osThreadCreate(osThread(screenTask), NULL);
   /* USER CODE END RTOS_THREADS */
@@ -139,6 +140,9 @@ void ScreenTask(void const * argument)
       {
         ili9341_device_t *dev = screen();
 
+#if defined(TEST_BOING)
+        testBoing(dev);
+#else
         testScreenFill(dev);
         testScreenLines(dev);
         osDelay(1000);
@@ -148,47 +152,10 @@ void ScreenTask(void const * argument)
         osDelay(1000);
         //testScreenText(dev);
         //osDelay(1000);
-
+#endif
         osSemaphoreRelease(screenLockHandle);
       }
     }
-  }
-
-//  uint8_t message[screenMessageSize];
-//  char text[screenMessageSize - 3];
-//  uint8_t textSize;
-//  size_t recvCount;
-//
-//  ili9341_text_attr_t textAttr = (ili9341_text_attr_t){
-//    .font = &ili9341_font_7x10,
-//    .fg_color = ILI9341_WHITE,
-//    .bg_color = ILI9341_BLUE,
-//    .origin_x = 10,
-//    .origin_y = 10
-//  };
-  for (;;)
-  {
-//    recvCount =
-//        xMessageBufferReceive(screenMessage, (void *)message, sizeof(message), portMAX_DELAY);
-//
-//    if (recvCount > 2)
-//    {
-//      textAttr.origin_x = message[0];
-//      textAttr.origin_y = message[1];
-//      textSize          = message[2];
-//
-//      if (NULL != screenLockHandle)
-//      {
-//        if (osOK == osSemaphoreWait(screenLockHandle, osWaitForever))
-//        {
-//          memcpy(text, message + 2, textSize);
-//          ili9341_fill_rect(screen(), textAttr.bg_color,
-//              textAttr.origin_x, textAttr.origin_y, screen()->screen_size.width / 2, textAttr.font->height);
-//          ili9341_draw_string(screen(), textAttr, text);
-//          osSemaphoreRelease(screenLockHandle);
-//        }
-//      }
-//    }
   }
 }
 
@@ -200,8 +167,6 @@ void testScreenFill(ili9341_device_t *dev)
   osDelay(500);
   ili9341_fill_screen(dev, ILI9341_GREEN);
   osDelay(500);
-  ili9341_draw_bitmap_1b(dev, ILI9341_DARKGREY, ILI9341_LIGHTGREY, 0, 0, 320, 240, NULL);
-  osDelay(2000);
 }
 
 void testScreenLines(ili9341_device_t *dev)
@@ -272,6 +237,8 @@ void testScreenCircles(ili9341_device_t *dev)
 
       if ((n & 1) == (m & 1)) {
         ili9341_draw_circle(dev, color, i + 12, j + 12, 16);
+        ili9341_draw_circle(dev, color, i + 12, j + 12, 10);
+        ili9341_draw_circle(dev, color, i + 12, j + 12, 4);
       }
       else {
         ili9341_draw_circle(dev, color, i + 12, j + 12, 8);
@@ -293,6 +260,21 @@ void testScreenText(ili9341_device_t *dev)
   };
   ili9341_draw_string(dev, textAttr, "Hello world!");
 
+}
+
+void testBoing(ili9341_device_t *dev)
+{
+  static boing_ball_t ball;
+
+  if (ibNOT(_boingInitialized)) {
+    ili9341_draw_bitmap_1b(dev, BOING_COLOR_PLOT_SHADOW, BOING_COLOR_PLOT_COLOR,
+        0, 0, 320, 240, (uint8_t *)BOING_PLOT);
+    _boingInitialized = ibTrue;
+    boing_init(&ball);
+  }
+  else {
+    boing(dev, &ball);
+  }
 }
 /* USER CODE END Application */
 

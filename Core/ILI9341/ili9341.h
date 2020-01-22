@@ -34,12 +34,6 @@ extern "C" {
 #define __SPI_MAX_DELAY__    HAL_MAX_DELAY
 #define __SPI_TX_BLOCK_MAX__ (1U * 1024U) // 1024 16-bit words (2 KiB)
 
-// whether memory should be allocated as-needed for the SPI block transfers, or
-// if they should share a common pool allocated at compile-time. static
-// allocation may be faster, but it's a waste of RAM if you aren't frequently
-// doing full-screen refreshes.
-//#define __ILI9341_STATIC_MEM_ALLOC__
-
 // ------------------------------------------------------------------- macros --
 
 #define __MSBYTEu16(u) (uint8_t)(((uint16_t)(u) >> 8U) & 0xFF)
