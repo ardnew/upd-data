@@ -23,6 +23,7 @@
 #include "cmsis_os.h"
 #include "adc.h"
 #include "dma.h"
+#include "i2c.h"
 #include "spi.h"
 #include "ucpd.h"
 #include "usart.h"
@@ -56,6 +57,7 @@
 extern osThreadId screenTaskHandle;
 
 ili9341_device_t *_screen;
+ina260_device_t *_vsense;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -71,6 +73,11 @@ void MX_FREERTOS_Init(void);
 ili9341_device_t *screen(void)
 {
   return _screen;
+}
+
+ina260_device_t *vsense(void)
+{
+  return _vsense;
 }
 
 void screenTouchBegin(ili9341_device_t *dev, uint16_t x, uint16_t y)
@@ -99,7 +106,7 @@ int main(void)
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
- HAL_Init();
+  HAL_Init();
 
   /* USER CODE BEGIN Init */
 
@@ -118,10 +125,16 @@ int main(void)
   MX_DMA_Init();
   MX_ADC1_Init();
   MX_UCPD1_Init();
-  MX_USART1_UART_Init();
   MX_USBPD_Init();
   MX_SPI1_Init();
+  MX_I2C2_Init();
   /* USER CODE BEGIN 2 */
+
+  _vsense = ina260_device_new(
+      &hi2c2,
+      INA260_SLAVE_ADDRESS);
+
+  ina260_wait_until_ready(_vsense);
 
   _screen = ili9341_device_new(
       &hspi1,
@@ -211,10 +224,10 @@ void SystemClock_Config(void)
   }
   /** Initializes the peripherals clocks
   */
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1|RCC_PERIPHCLK_USART2
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART2|RCC_PERIPHCLK_I2C2
                               |RCC_PERIPHCLK_ADC12;
-  PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK2;
   PeriphClkInit.Usart2ClockSelection = RCC_USART2CLKSOURCE_PCLK1;
+  PeriphClkInit.I2c2ClockSelection = RCC_I2C2CLKSOURCE_PCLK1;
   PeriphClkInit.Adc12ClockSelection = RCC_ADC12CLKSOURCE_SYSCLK;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
   {

@@ -47,6 +47,7 @@ extern "C" {
 #include "ili9341.h"
 #include "ili9341_font.h"
 #include "ili9341_gfx.h"
+#include "ina260.h"
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
@@ -92,6 +93,7 @@ void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
 ili9341_device_t *screen(void);
+ina260_device_t *vsense(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
