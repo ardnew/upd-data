@@ -31,9 +31,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#if defined(_GUI_INTERFACE)
-#include "gui_api.h"
-#endif
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -143,15 +141,6 @@ int main(void)
       itsSupported,
       itnNormalized);
 
-//  ili9341_calibrate_scalar(_lcd, 3763, 3931, 338, 211);
-//  ili9341_calibrate_3point(_lcd, 320, 240,
-//       13,    30,
-//      312,   113,
-//      167,   214,
-//     8770,  4320,
-//    18240, 30262,
-//    30648, 17720);
-
   ili9341_set_touch_pressed_begin(_lcd, screenTouchBegin);
   ili9341_set_touch_pressed_end(_lcd, screenTouchEnd);
 
@@ -259,9 +248,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
   /* USER CODE BEGIN Callback 0 */
   USBPD_DPM_TimerCounter();
-#if defined(_GUI_INTERFACE)
-  GUI_TimerCounter();
-#endif
+
   /* USER CODE END Callback 0 */
   if (htim->Instance == TIM6) {
     HAL_IncTick();
